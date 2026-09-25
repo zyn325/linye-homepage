@@ -1,20 +1,14 @@
-const revealItems = document.querySelectorAll('.project-card, .about-copy, .about-detail, .contact > div');
-const observer = new IntersectionObserver((entries) => {
-  entries.forEach((entry) => {
-    if (entry.isIntersecting) {
-      entry.target.classList.add('is-visible');
-      observer.unobserve(entry.target);
-    }
-  });
-}, { threshold: 0.12 });
-
-revealItems.forEach((item) => {
-  item.classList.add('reveal');
-  observer.observe(item);
-});
-
-document.querySelectorAll('a[href^="#"]').forEach((link) => {
-  link.addEventListener('click', () => {
-    document.body.classList.add('has-navigated');
-  });
-});
+const canvas=document.getElementById('gameCanvas'),ctx=canvas.getContext('2d'),scoreEl=document.getElementById('score'),bestEl=document.getElementById('bestScore'),levelEl=document.getElementById('level'),statusEl=document.getElementById('status'),startScreen=document.getElementById('startScreen'),gameOverScreen=document.getElementById('gameOverScreen'),finalScoreEl=document.getElementById('finalScore');
+const WIDTH=600,HEIGHT=700,player={x:283,y:635,size:34,speed:8};let score=0,best=Number(localStorage.getItem('dodge-best')||0),blocks=[],running=false,leftPressed=false,rightPressed=false,lastTime=0,spawnTimer=0;bestEl.textContent=best;
+function drawBackground(){ctx.fillStyle='#101827';ctx.fillRect(0,0,WIDTH,HEIGHT);ctx.strokeStyle='rgba(84,200,245,.06)';for(let x=0;x<=WIDTH;x+=40){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,HEIGHT);ctx.stroke()}for(let y=0;y<=HEIGHT;y+=40){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(WIDTH,y);ctx.stroke()}}
+function drawPlayer(){ctx.save();ctx.shadowColor='#54c8f5';ctx.shadowBlur=18;ctx.fillStyle='#54c8f5';ctx.fillRect(player.x,player.y,player.size,player.size);ctx.shadowBlur=0;ctx.fillStyle='#b9efff';ctx.fillRect(player.x+8,player.y+8,7,7);ctx.restore()}
+function drawBlock(b){ctx.save();ctx.shadowColor='#fa5d70';ctx.shadowBlur=14;ctx.fillStyle='#fa5d70';ctx.fillRect(b.x,b.y,b.size,b.size);ctx.shadowBlur=0;ctx.fillStyle='#ff9aa7';ctx.fillRect(b.x+b.size*.23,b.y+b.size*.23,b.size*.16,b.size*.16);ctx.restore()}
+function render(){drawBackground();blocks.forEach(drawBlock);if(running)drawPlayer()}
+function spawnBlock(){const size=24+Math.random()*31;blocks.push({x:size+Math.random()*(WIDTH-size*2),y:-size,size,speed:230+Math.random()*125+Math.min(score*3,300)})}
+function overlaps(a,b){return a.x<b.x+b.size&&a.x+a.size>b.x&&a.y<b.y+b.size&&a.y+a.size>b.y}
+function setScore(v){score=v;scoreEl.textContent=score;levelEl.textContent=String(Math.min(99,Math.floor(score/5)+1)).padStart(2,'0')}
+function startGame(){if(running)return;running=true;setScore(0);blocks=[];spawnTimer=0;player.x=283;startScreen.classList.add('hidden');gameOverScreen.classList.add('hidden');statusEl.textContent='躲开红色方块';canvas.focus();lastTime=performance.now();requestAnimationFrame(loop)}
+function endGame(){running=false;finalScoreEl.textContent=score;gameOverScreen.classList.remove('hidden');statusEl.textContent='按 R 或空格重新开始';document.querySelector('.game-shell').classList.add('shake');setTimeout(()=>document.querySelector('.game-shell').classList.remove('shake'),260);if(score>best){best=score;bestEl.textContent=best;localStorage.setItem('dodge-best',best)}render()}
+function loop(now){if(!running)return;const dt=Math.min((now-lastTime)/1000,.04);lastTime=now;player.x+=(Number(rightPressed)-Number(leftPressed))*player.speed*60*dt;player.x=Math.max(0,Math.min(WIDTH-player.size,player.x));spawnTimer+=dt*1000;const interval=Math.max(270,850-score*14);if(spawnTimer>=interval){spawnTimer=0;spawnBlock()}const remaining=[];for(const b of blocks){b.y+=b.speed*dt;if(overlaps(player,b)){endGame();return}if(b.y>HEIGHT)setScore(score+1);else remaining.push(b)}blocks=remaining;render();requestAnimationFrame(loop)}
+function press(d,v){if(d==='left')leftPressed=v;else rightPressed=v}function bindControl(id,d){const b=document.getElementById(id);['pointerdown','touchstart'].forEach(e=>b.addEventListener(e,x=>{x.preventDefault();press(d,true)}));['pointerup','pointerleave','pointercancel','touchend'].forEach(e=>b.addEventListener(e,x=>{x.preventDefault();press(d,false)}))}
+window.addEventListener('keydown',e=>{if(['ArrowLeft','ArrowRight',' '].includes(e.key))e.preventDefault();if(e.key==='ArrowLeft')leftPressed=true;if(e.key==='ArrowRight')rightPressed=true;if(e.key===' '||e.key.toLowerCase()==='r')startGame()});window.addEventListener('keyup',e=>{if(e.key==='ArrowLeft')leftPressed=false;if(e.key==='ArrowRight')rightPressed=false});document.getElementById('startButton').addEventListener('click',startGame);document.getElementById('restartButton').addEventListener('click',startGame);bindControl('leftButton','left');bindControl('rightButton','right');render();

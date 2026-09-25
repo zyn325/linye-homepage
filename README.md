@@ -1,17 +1,14 @@
-# Lin Ye · 个人主页
+# 躲避方块 · Dodge Game
 
-一个纯静态、无需构建工具的个人主页，可直接部署到 GitHub Pages。
+一个可以直接在浏览器里玩的躲避小游戏，改编自桌面版 Tkinter 游戏。
 
-## 本地预览
+## 玩法
 
-直接双击 `index.html`，或使用任意静态文件服务器打开即可。
+- 使用键盘 `←` `→` 控制蓝色方块移动。
+- 也可以使用游戏下方的触控按钮，适配手机浏览器。
+- 躲开红色方块，每躲过一个得 1 分；分数越高，方块越快。
+- 按空格键或 `R` 重新开始，最高分会保存在当前浏览器中。
 
-## 发布到 GitHub Pages
+## GitHub Pages
 
-1. 在 GitHub 新建一个仓库（例如 `linye-homepage`）。
-2. 上传 `index.html`、`styles.css`、`script.js` 三个文件。
-3. 打开仓库的 **Settings → Pages**。
-4. 在 **Build and deployment** 中选择 **Deploy from a branch**，分支选择 `main` 和 `/ (root)`，点击保存。
-5. 等待几分钟，GitHub 会生成网页地址。
-
-发布前建议把页面中的姓名、邮箱、作品名称和社交链接替换成自己的信息。
+这个项目是纯静态网页，不需要构建工具。GitHub Pages 从 `main` 分支根目录发布即可。
