@@ -1,6 +1,11 @@
 name: Browser playtest
 on:
   workflow_dispatch:
+    inputs:
+      origin:
+        description: Website URL, leave empty to test the local Cloudflare runtime
+        required: false
+        default: ''
 permissions:
   contents: read
 jobs:
@@ -17,9 +22,14 @@ jobs:
       - run: npm install --prefix /tmp/browser-tools playwright
       - run: /tmp/browser-tools/node_modules/.bin/playwright install --with-deps chromium
       - name: Playtest
+        env:
+          TEST_ORIGIN: ${{ inputs.origin }}
         run: |
-          corepack pnpm dev:cloudflare > /tmp/lightpath-server.log 2>&1 &
-          for i in $(seq 1 30); do curl -sf http://localhost:5173/health && break || sleep 1; done
+          if [ -z "$TEST_ORIGIN" ]; then
+            corepack pnpm dev:cloudflare > /tmp/lightpath-server.log 2>&1 &
+            for i in $(seq 1 30); do curl -sf http://localhost:5173/health && break || sleep 1; done
+          fi
+          node tests/rooms.cjs
           NODE_PATH=/tmp/browser-tools/node_modules node tests/browser.cjs
       - uses: actions/upload-artifact@v4
         if: always()

@@ -180,7 +180,10 @@ export class ChessRoom extends DurableObject<Env> {
   }
   webSocketClose(socket: WebSocket, code: number, reason: string) {
     socket.serializeAttachment(null);
-    socket.close(code, reason);
+    // Abrupt disconnects arrive with reserved close codes such as 1005/1006.
+    // These codes cannot be sent in a WebSocket close frame.
+    const replyCode = code === 1005 || code === 1006 || code === 1015 ? 1000 : code;
+    socket.close(replyCode, reason);
     this.broadcast();
   }
   webSocketError(socket: WebSocket) {
