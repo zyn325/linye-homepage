@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: guangluqi
+    runtime: node
+    plan: free
+    buildCommand: corepack pnpm install --frozen-lockfile && corepack pnpm build
+    startCommand: corepack pnpm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: 22.16.0
+      - key: DATA_DIR
+        value: /tmp/guangluqi-data
