@@ -6,6 +6,7 @@ const $ = <T extends HTMLElement = HTMLElement>(selector: string) => document.qu
 const sitePath = new URL('.', location.href).pathname;
 const serviceOrigin = localStorage.getItem('lightpath-service') || location.origin;
 const staticHosting = location.hostname.endsWith('.github.io');
+const onlineSite = 'https://guangluqi.guangluqi.workers.dev';
 const sideName = (side: Side) => side === 'red' ? '红方' : '蓝方';
 $('#app').innerHTML = `
   <header class="site-header"><a href="${sitePath}" class="brand"><span class="brand-mark">╱</span><span>光路棋<small>LIGHTPATH</small></span></a><button class="text-button" id="rules-open">玩法说明 <span>↗</span></button></header>
@@ -209,7 +210,10 @@ function openSetup(next: 'ai' | 'friend', code = '') {
   ($('#setup') as HTMLDialogElement).showModal();
 }
 $('#open-ai').onclick = () => openSetup('ai');
-$('#open-friend').onclick = () => openSetup('friend');
+$('#open-friend').onclick = () => {
+  if (staticHosting) { location.assign(`${onlineSite}/?mode=friend`); return; }
+  openSetup('friend');
+};
 $('#setup-form').addEventListener('submit', event => {
   if ((event as SubmitEvent).submitter?.getAttribute('value') === 'cancel') return;
   event.preventDefault();
@@ -301,9 +305,6 @@ document.addEventListener('keydown', event => {
   if (event.key === 'Enter' && !$<HTMLButtonElement>('#confirm-move').disabled) $('#confirm-move').click();
 });
 const invite = new URLSearchParams(location.search).get('room');
-if (staticHosting && serviceOrigin === location.origin) {
-  $('#open-friend small').textContent = '联机服务准备中';
-}
 if (invite) {
   if (sessionStorage.getItem('lightpath-room') === invite.toUpperCase()) connect({ type: 'join', code: invite, name: nickname, token: token() });
   else openSetup('friend', invite);
@@ -330,4 +331,5 @@ if (invite) {
     } catch { localStorage.removeItem('lightpath-ai'); }
   }
 }
+if (!invite && new URLSearchParams(location.search).get('mode') === 'friend') openSetup('friend');
 update();
