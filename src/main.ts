@@ -295,7 +295,16 @@ if (invite) {
       if (previous.state.outcome?.reason === 'resign' && !rebuilt.outcome) rebuilt.outcome = previous.state.outcome;
       state = rebuilt; human = previous.human === 'blue' ? 'blue' : 'red'; difficulty = previous.difficulty === 'easy' ? 'easy' : 'standard';
       const resume = document.createElement('button'); resume.className = 'text-button resume'; resume.textContent = '继续上次的人机对局 →';
-      resume.onclick = () => { showPlay(); update(); beginAI(); }; $('.intro').append(resume);
+      resume.onclick = () => {
+        closeConnection(); stopAI();
+        const latest = JSON.parse(localStorage.getItem('lightpath-ai') || saved);
+        state = latest.state;
+        human = latest.human === 'blue' ? 'blue' : 'red';
+        difficulty = latest.difficulty === 'easy' ? 'easy' : 'standard';
+        mode = 'ai'; room = null; selected = null;
+        showPlay(); update(); beginAI();
+      };
+      $('.intro').append(resume);
     } catch { localStorage.removeItem('lightpath-ai'); }
   }
 }
