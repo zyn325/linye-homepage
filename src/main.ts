@@ -1,6 +1,6 @@
 import './style.css';
 import type { BoardView } from './board';
-import { emptyGame, other, placeMove, type GameState, type Orientation, type Side } from './game/rules';
+import { emptyGame, legalMove, other, placeMove, restoreGame, type GameState, type Orientation, type Side } from './game/rules';
 
 const $ = <T extends HTMLElement = HTMLElement>(selector: string) => document.querySelector<T>(selector)!;
 const sitePath = new URL('.', location.href).pathname;
@@ -33,7 +33,7 @@ $('#app').innerHTML = `
     </section>
   </main><footer><span>光路棋</span><span>每一折，皆有可能。</span></footer>
   <dialog id="setup"><form method="dialog" id="setup-form"><button class="dialog-close" aria-label="关闭" value="cancel" formnovalidate>×</button><p class="eyebrow" id="setup-kicker">独自推演</p><h2 id="setup-title">开始一场光路对决</h2><div class="form-field"><label for="nickname">你的昵称</label><input id="nickname" maxlength="16" placeholder="旅光者" autocomplete="nickname" /></div><div id="ai-settings"><div class="form-field"><label for="difficulty">电脑难度</label><select id="difficulty"><option value="easy">入门 · 熟悉反射与透射</option><option value="standard" selected>标准 · 兼顾进攻与防守</option></select></div><div class="form-field"><label for="human-side">选择阵营</label><select id="human-side"><option value="red">红方 · 先手</option><option value="blue">蓝方 · 后手</option></select></div></div><div id="friend-settings" class="hidden"><div class="form-field"><label for="join-code">加入已有房间</label><input id="join-code" maxlength="6" placeholder="输入 6 位房间号，或留空创建" /></div><p class="form-note">创建房间后，把邀请链接分享给朋友。双方准备后开局。</p></div><button type="button" id="start-game" class="primary full">开始对局 ↗</button></form></dialog>
-  <dialog id="rules-dialog"><button class="dialog-close" id="rules-close" aria-label="关闭">×</button><p class="eyebrow">让光找到出路</p><h2>光路棋怎么玩</h2><div class="rules-copy"><h3>轮流放置镜子</h3><p>红方先行，每回合在空格放一面己方镜子，选择 / 或 \\ 朝向。落定后固定。光源格和四个斜纹禁放格禁止落镜，禁放格允许光通过。</p><h3>构筑你的光路</h3><p>红方光源位于 (5, 9)，向上或向左出光。蓝方位于 (9, 5)，向下或向右出光。光沿行列传播，镜面反射使光转向 90°。</p><div class="reflection-guide">╱　上 ↔ 右　下 ↔ 左<br>╲　上 ↔ 左　下 ↔ 右</div><p>遇到己方镜子，可以反射或透射，每次选择独立。遇到对方镜子，必须反射。系统自动寻找可行路径，无须手动选择光线。</p><h3>击中对方光源即可获胜</h3><p>光必须从开放侧进入对方光源。保护墙吸收光。光出界、返回己方光源或困于闭环，该路径终止。</p><p>每手落定后，先检查对手的击败光路，再检查自己。双方同时成路时，落子者输。</p><h3>和棋与封锁</h3><p>双方同意和棋，或 163 个可落子格全部占满且双方均未获胜时判和。光路被封锁时继续对局。</p></div></dialog>
+  <dialog id="rules-dialog"><button class="dialog-close" id="rules-close" aria-label="关闭">×</button><p class="eyebrow">让光找到出路</p><h2>光路棋怎么玩</h2><div class="rules-copy"><h3>轮流放置镜子</h3><p>红方先行，每回合在空格放一面己方镜子，选择 / 或 \\ 朝向。落定后固定。同阵营的镜子不能沿镜面方向在对角相邻格首尾相接成直线，例如 (1, 1) 与 (2, 2) 的两面 / 镜，以及 (1, 2) 与 (2, 1) 的两面 \\ 镜。不同阵营可以这样连接，隔有空格也允许。光源格和四个斜纹禁放格禁止落镜，禁放格允许光通过。</p><h3>构筑你的光路</h3><p>红方光源位于 (5, 9)，向上或向左出光。蓝方位于 (9, 5)，向下或向右出光。光沿行列传播，镜面反射使光转向 90°。</p><div class="reflection-guide">╱　上 ↔ 右　下 ↔ 左<br>╲　上 ↔ 左　下 ↔ 右</div><p>遇到己方镜子，可以反射或透射，每次选择独立。遇到对方镜子，必须反射。系统自动寻找可行路径，无须手动选择光线。</p><h3>击中对方光源即可获胜</h3><p>光必须从开放侧进入对方光源。保护墙吸收光。光出界、返回己方光源或困于闭环，该路径终止。</p><p>每手落定后，先检查对手的击败光路，再检查自己。双方同时成路时，落子者输。</p><h3>和棋与封锁</h3><p>双方同意和棋，或 163 个可落子格全部占满且双方均未获胜时判和；若轮到的一方已无合法落子，也自动判和。每手仍先检查胜负。光路被封锁时继续对局。</p></div></dialog>
   <div id="toast" role="status" aria-live="polite"></div>`;
 
 type RoomView = { type: 'room'; code: string; side: Side; players: Partial<Record<Side, { name: string; ready: boolean; online: boolean }>>;
@@ -169,10 +169,12 @@ function update() {
   if (ended) {
     kicker = '对局结束';
     title = state.outcome!.winner === 'draw' ? '这一局，平分秋色。' : state.outcome!.winner === human ? '你找到了光的出路。' : '对手的光先到了。';
-    copy = state.outcome!.reason === 'connection' ? `${sideName(state.outcome!.winner as Side)}击中对方光源，获胜。` : state.outcome!.reason === 'resign' ? `${sideName(state.outcome!.winner as Side)}获胜，对方认输。` : state.outcome!.reason === 'full' ? '棋盘已满，双方均未连通光路。' : '双方同意和棋。';
+    copy = state.outcome!.reason === 'connection' ? `${sideName(state.outcome!.winner as Side)}击中对方光源，获胜。` : state.outcome!.reason === 'resign' ? `${sideName(state.outcome!.winner as Side)}获胜，对方认输。` : state.outcome!.reason === 'full' ? '棋盘已满，双方均未连通光路。' : state.outcome!.reason === 'no-moves' ? `${sideName(state.turn)}已无合法落子，自动和棋。` : '双方同意和棋。';
   } else if (waiting) { kicker = '房间已创建'; title = room?.players.blue ? '准备好就开始。' : '等一位同行者。'; copy = room?.players.blue ? '双方点击准备后开始，红方先行。' : '复制邀请链接，分享给你的朋友。'; }
   else if (mode === 'friend' && (!online || !opponentOnline)) { kicker = '连接恢复中'; title = online ? '等待对手回来。' : '正在重新连接。'; copy = '棋盘已经保存，连接恢复后继续。'; }
   else if (thinking || state.turn !== human) { kicker = thinking ? '电脑正在思考' : '对手回合'; title = thinking ? '光正在寻找方向…' : '静候下一面镜子。'; copy = thinking ? '推演进攻，也留意你的光路。' : '你可以观察棋盘，规划下一步。'; }
+  const invalidSelection = selected && !legalMove(state.moves, { ...selected, orientation, side: human });
+  if (interactive && invalidSelection) copy = '同阵营镜子不能首尾相接成直线，请切换朝向或选择其他格子。';
   $('#status-kicker').textContent = kicker; $('#status-title').textContent = title; $('#status-copy').textContent = copy;
   $('#move-controls').classList.toggle('hidden', waiting || ended);
   $('#room-controls').classList.toggle('hidden', !waiting);
@@ -182,7 +184,7 @@ function update() {
     const button = $<HTMLButtonElement>(`#${id}`);
     button.classList.toggle('active', value === orientation); button.setAttribute('aria-pressed', String(value === orientation)); button.disabled = !interactive;
   }
-  $<HTMLButtonElement>('#confirm-move').disabled = !interactive || !selected;
+  $<HTMLButtonElement>('#confirm-move').disabled = !interactive || !selected || !!invalidSelection;
   $('#restart').classList.toggle('hidden', !ended);
   $('#restart').textContent = mode === 'friend' && room?.rematch.includes(human) ? '等待对手再来一局…' : '再来一局 ↗';
   $('#path-toggle').classList.toggle('hidden', !state.outcome?.path.length);
@@ -258,7 +260,7 @@ $('#start-game').onclick = async () => {
 $('#slash').onclick = () => { orientation = '/'; update(); };
 $('#backslash').onclick = () => { orientation = '\\'; update(); };
 $('#confirm-move').onclick = () => {
-  if (!selected) return;
+  if (!selected || !legalMove(state.moves, { ...selected, orientation, side: human })) return;
   if (mode === 'friend') send('move', { ...selected, orientation });
   else {
     try { state = placeMove(state, { ...selected, orientation, side: human }); selected = null; saveAI(); update(); beginAI(); }
@@ -313,15 +315,13 @@ if (invite) {
   if (saved) {
     try {
       const previous = JSON.parse(saved);
-      let rebuilt = emptyGame();
-      for (const move of previous.state.moves) rebuilt = placeMove(rebuilt, move);
-      if (previous.state.outcome?.reason === 'resign' && !rebuilt.outcome) rebuilt.outcome = previous.state.outcome;
+      const rebuilt = restoreGame(previous.state);
       state = rebuilt; human = previous.human === 'blue' ? 'blue' : 'red'; difficulty = previous.difficulty === 'easy' ? 'easy' : 'standard';
       const resume = document.createElement('button'); resume.className = 'text-button resume'; resume.textContent = '继续上次的人机对局 →';
       resume.onclick = () => {
         closeConnection(); stopAI();
         const latest = JSON.parse(localStorage.getItem('lightpath-ai') || saved);
-        state = latest.state;
+        state = restoreGame(latest.state);
         human = latest.human === 'blue' ? 'blue' : 'red';
         difficulty = latest.difficulty === 'easy' ? 'easy' : 'standard';
         mode = 'ai'; room = null; selected = null;

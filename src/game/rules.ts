@@ -3,7 +3,7 @@ export type Orientation = '/' | '\\';
 export type Direction = 0 | 1 | 2 | 3;
 export interface Move { x: number; y: number; orientation: Orientation; side: Side }
 export interface RayStep { x: number; y: number; direction: Direction; action?: 'reflect' | 'transmit' }
-export interface Outcome { winner: Side | 'draw'; path: RayStep[]; reason: 'connection' | 'full' | 'agreement' | 'resign' }
+export interface Outcome { winner: Side | 'draw'; path: RayStep[]; reason: 'connection' | 'full' | 'no-moves' | 'agreement' | 'resign' }
 export interface GameState { moves: Move[]; turn: Side; outcome: Outcome | null }
 export const SIZE = 13;
 export const SOURCES = { red: { x: 5, y: 9 }, blue: { x: 9, y: 5 } };
@@ -20,6 +20,26 @@ export function reflect(direction: Direction, orientation: Orientation): Directi
 export function legalCell(moves: Move[], x: number, y: number): boolean {
   return Number.isInteger(x) && Number.isInteger(y) && x >= 1 && x <= SIZE && y >= 1 && y <= SIZE
     && !isForbidden(x, y) && !moves.some(move => move.x === x && move.y === y);
+}
+export function connectsOwnMirrors(moves: Move[], move: Move): boolean {
+  return moves.some(existing => {
+    if (existing.side !== move.side || existing.orientation !== move.orientation) return false;
+    const dx = move.x - existing.x;
+    const dy = move.y - existing.y;
+    return Math.abs(dx) === 1 && dy === (move.orientation === '/' ? dx : -dx);
+  });
+}
+export function legalMove(moves: Move[], move: Move): boolean {
+  return (move.side === 'red' || move.side === 'blue')
+    && (move.orientation === '/' || move.orientation === '\\')
+    && legalCell(moves, move.x, move.y) && !connectsOwnMirrors(moves, move);
+}
+export function hasLegalMove(moves: Move[], side: Side): boolean {
+  for (let y = 1; y <= SIZE; y++) for (let x = 1; x <= SIZE; x++) {
+    if (legalMove(moves, { x, y, side, orientation: '/' })
+      || legalMove(moves, { x, y, side, orientation: '\\' })) return true;
+  }
+  return false;
 }
 export function winningPath(moves: Move[], side: Side): RayStep[] | null {
   const board = new Map(moves.map(move => [key(move.x, move.y), move]));
@@ -59,12 +79,33 @@ export function placeMove(state: GameState, move: Move): GameState {
   if (move.side !== state.turn) throw new Error('请等待你的回合');
   if (move.orientation !== '/' && move.orientation !== '\\') throw new Error('请选择镜面朝向');
   if (!legalCell(state.moves, move.x, move.y)) throw new Error('这个位置不能放置镜子');
+  if (connectsOwnMirrors(state.moves, move)) throw new Error('同阵营镜子不能首尾相接成直线，请换个朝向或位置');
   const moves = [...state.moves, move];
+  return resolvePosition(moves, move.side);
+}
+function resolvePosition(moves: Move[], lastSide: Side): GameState {
   let outcome: Outcome | null = null;
-  for (const side of [other(move.side), move.side]) {
+  for (const side of [other(lastSide), lastSide]) {
     const path = winningPath(moves, side);
     if (path) { outcome = { winner: side, path, reason: 'connection' }; break; }
   }
   if (!outcome && moves.length === 163) outcome = { winner: 'draw', path: [], reason: 'full' };
-  return { moves, turn: other(state.turn), outcome };
+  const turn = other(lastSide);
+  if (!outcome && !hasLegalMove(moves, turn)) outcome = { winner: 'draw', path: [], reason: 'no-moves' };
+  return { moves, turn, outcome };
+}
+export function restoreGame(saved: GameState): GameState {
+  // Existing saves can contain connected mirrors placed under the earlier rules.
+  // Validate their original placement constraints and apply the new rule to future moves.
+  if (!saved || !Array.isArray(saved.moves)) throw new Error('对局存档无效');
+  const moves: Move[] = [];
+  for (const move of saved.moves) {
+    if (!move || move.side !== (moves.length % 2 === 0 ? 'red' : 'blue')
+      || (move.orientation !== '/' && move.orientation !== '\\')
+      || !legalCell(moves, move.x, move.y)) throw new Error('对局存档无效');
+    moves.push({ ...move });
+  }
+  const restored = moves.length ? resolvePosition(moves, moves.at(-1)!.side) : emptyGame();
+  if (saved.outcome?.reason === 'resign') restored.outcome = saved.outcome;
+  return restored;
 }

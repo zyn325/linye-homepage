@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { emptyGame, legalCell, placeMove, reflect, winningPath, type Direction, type Move } from '../src/game/rules';
+import { emptyGame, hasLegalMove, isForbidden, legalCell, legalMove, placeMove, reflect, restoreGame, winningPath, type Direction, type Move } from '../src/game/rules';
 import { chooseMove } from '../src/game/ai';
 
 const example: Move[] = [
@@ -68,4 +68,61 @@ test('computer takes a winning move and avoids giving the opponent a connection'
   assert.ok(opening);
   assert.equal(legalCell([], opening.x, opening.y), true);
   assert.notEqual(placeMove(emptyGame(), opening).outcome?.winner, 'blue');
+});
+test('same-side mirrors cannot connect at either endpoint along their surface', () => {
+  for (const side of ['red', 'blue'] as const) {
+    for (const orientation of ['/', '\\'] as const) {
+      const first: Move = { x: 7, y: 7, side, orientation };
+      for (const dx of [-1, 1]) {
+        const move = { x: 7 + dx, y: 7 + (orientation === '/' ? dx : -dx), side, orientation };
+        assert.equal(legalMove([first], move), false);
+        assert.throws(() => placeMove({ moves: [first], turn: side, outcome: null }, move), /首尾相接/);
+        assert.equal(legalMove([first], { ...move, side: side === 'red' ? 'blue' : 'red' }), true);
+        assert.equal(legalMove([first], { ...move, orientation: orientation === '/' ? '\\' : '/' }), true);
+      }
+      assert.equal(legalMove([first], { ...first, x: 10, y: orientation === '/' ? 10 : 4 }), true);
+      assert.equal(legalMove([first], { ...first, x: 8 }), true);
+      assert.equal(legalMove([first], { ...first, y: 8 }), true);
+    }
+  }
+  assert.equal(legalMove([{ x: 1, y: 1, side: 'red', orientation: '/' }], { x: 2, y: 2, side: 'red', orientation: '/' }), false);
+  assert.equal(legalMove([{ x: 1, y: 2, side: 'red', orientation: '\\' }], { x: 2, y: 1, side: 'red', orientation: '\\' }), false);
+});
+test('no legal orientation ends the game in a draw after checking connections', () => {
+  const moves: Move[] = [];
+  for (let y = 1; y <= 13; y++) for (let x = 1; x <= 13; x++) {
+    if (isForbidden(x, y) || (x === 7 && y === 7) || (x === 1 && y === 1)) continue;
+    moves.push({ x, y, side: 'blue', orientation: x === 8 && y === 6 ? '\\' : '/' });
+  }
+  assert.equal(legalCell(moves, 7, 7), true);
+  assert.equal(hasLegalMove([...moves, { x: 1, y: 1, side: 'red', orientation: '/' }], 'blue'), false);
+  const state = placeMove({ moves, turn: 'red', outcome: null }, { x: 1, y: 1, side: 'red', orientation: '/' });
+  assert.equal(state.outcome?.reason, 'no-moves');
+  assert.equal(state.outcome?.winner, 'draw');
+  assert.equal(state.moves.length, 162);
+});
+test('old saves retain previously placed connected mirrors', () => {
+  const saved = { moves: [
+    { x: 1, y: 1, side: 'red', orientation: '/' },
+    { x: 13, y: 1, side: 'blue', orientation: '/' },
+    { x: 2, y: 2, side: 'red', orientation: '/' }
+  ] as Move[], turn: 'blue' as const, outcome: null };
+  assert.deepEqual(restoreGame(saved).moves, saved.moves);
+  assert.equal(legalMove(saved.moves, { x: 3, y: 3, side: 'red', orientation: '/' }), false);
+});
+test('both computer difficulties choose a legal move under the new rule', () => {
+  const state = { moves: [
+    { x: 1, y: 1, side: 'red', orientation: '/' },
+    { x: 13, y: 1, side: 'blue', orientation: '\\' },
+    { x: 1, y: 3, side: 'red', orientation: '\\' },
+    { x: 13, y: 3, side: 'blue', orientation: '/' }
+  ] as Move[], turn: 'red' as const, outcome: null };
+  assert.equal(legalMove(state.moves, { x: 2, y: 2, side: 'red', orientation: '/' }), false);
+  assert.equal(legalMove(state.moves, { x: 2, y: 2, side: 'red', orientation: '\\' }), false);
+  for (const difficulty of ['easy', 'standard'] as const) {
+    const move = chooseMove(state, difficulty);
+    assert.ok(move);
+    assert.equal(legalMove(state.moves, move), true);
+    assert.doesNotThrow(() => placeMove(state, move));
+  }
 });

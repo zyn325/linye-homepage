@@ -1,4 +1,4 @@
-import { DELTA, OPEN, SIZE, SOURCES, isForbidden, key, legalCell, other, reflect, winningPath, type Direction, type GameState, type Move, type Side } from './rules';
+import { DELTA, OPEN, SIZE, SOURCES, connectsOwnMirrors, isForbidden, key, legalCell, legalMove, other, reflect, winningPath, type Direction, type GameState, type Move, type Side } from './rules';
 
 // A 0–1 shortest-path search estimates how many additional mirrors a route needs.
 // Existing own mirrors offer both transitions. A hypothetical turn at an empty cell costs one.
@@ -42,8 +42,8 @@ function routeCost(moves: Move[], side: Side): number {
       } else {
         push(d, 0);
         if (!isForbidden(x, y)) {
-          push(reflect(d, '/'), 1);
-          push(reflect(d, '\\'), 1);
+          if (!connectsOwnMirrors(moves, { x, y, side, orientation: '/' })) push(reflect(d, '/'), 1);
+          if (!connectsOwnMirrors(moves, { x, y, side, orientation: '\\' })) push(reflect(d, '\\'), 1);
         }
       }
     }
@@ -54,7 +54,10 @@ function candidates(state: GameState): Move[] {
   const moves: Move[] = [];
   for (let y = 1; y <= SIZE; y++) for (let x = 1; x <= SIZE; x++) {
     if (legalCell(state.moves, x, y)) {
-      moves.push({ x, y, side: state.turn, orientation: '/' }, { x, y, side: state.turn, orientation: '\\' });
+      for (const orientation of ['/', '\\'] as const) {
+        const move = { x, y, side: state.turn, orientation };
+        if (legalMove(state.moves, move)) moves.push(move);
+      }
     }
   }
   return moves;

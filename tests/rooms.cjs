@@ -58,6 +58,14 @@ function client() {
   resumed.send({ type: 'join', code, name: '蓝方', token: blueToken });
   room = await resumed.wait(m => m.type === 'room');
   assert.equal(room.side, 'blue'); assert.equal(room.state.moves.length, 1);
+  resumed.send({ type: 'move', version: room.version, x: 13, y: 1, orientation: '/' });
+  room = await a.wait(m => m.type === 'room' && m.state.moves.length === 2);
+  a.send({ type: 'move', version: room.version, x: 2, y: 2, orientation: '/' });
+  await a.wait(m => m.type === 'error' && m.message.includes('首尾相接'));
+  a.send({ type: 'move', version: room.version, x: 2, y: 2, orientation: '\\' });
+  room = await resumed.wait(m => m.type === 'room' && m.state.moves.length === 3);
+  resumed.send({ type: 'move', version: room.version, x: 3, y: 1, orientation: '\\' });
+  room = await a.wait(m => m.type === 'room' && m.state.moves.length === 4);
   a.send({ type: 'draw', version: room.version });
   room = await resumed.wait(m => m.type === 'room' && m.drawOffer === 'red');
   resumed.send({ type: 'draw', version: room.version });

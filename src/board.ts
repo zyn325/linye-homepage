@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { SOURCES, isForbidden, legalCell, type GameState, type Orientation, type Side } from './game/rules';
+import { SOURCES, isForbidden, legalCell, legalMove, type GameState, type Orientation, type Side } from './game/rules';
 
 const GRID = 40;
 const PAD = 30;
@@ -131,11 +131,13 @@ export function createBoard(parent: HTMLElement, onSelect: (x: number, y: number
       const ghost = view.selected || hover;
       if (view.interactive && ghost && legalCell(view.state.moves, ghost.x, ghost.y)) {
         const p = this.center(ghost.x, ghost.y);
-        g.fillStyle(COLORS[view.side], 0.12);
+        const valid = legalMove(view.state.moves, { ...ghost, side: view.side, orientation: view.orientation });
+        const color = valid ? COLORS[view.side] : 0xe8c995;
+        g.fillStyle(color, 0.12);
         g.fillRect(p.x - 19, p.y - 19, 38, 38);
-        g.lineStyle(1.5, COLORS[view.side], view.selected ? 0.9 : 0.4);
+        g.lineStyle(1.5, color, view.selected ? 0.9 : 0.4);
         g.strokeRect(p.x - 18, p.y - 18, 36, 36);
-        this.mirror(ghost.x, ghost.y, view.orientation, COLORS[view.side], view.selected ? 0.85 : 0.35);
+        this.mirror(ghost.x, ghost.y, view.orientation, color, view.selected ? 0.85 : 0.35);
       }
     }
   }
