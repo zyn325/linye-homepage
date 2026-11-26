@@ -1,0 +1,37 @@
+name: Deploy online rooms
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create or find free Render service
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+        run: |
+          node --input-type=module <<'JS'
+          const base = 'https://api.render.com/v1';
+          const headers = { Authorization: `Bearer ${process.env.RENDER_API_KEY}`, 'Content-Type': 'application/json' };
+          async function request(path, options = {}) {
+            const response = await fetch(base + path, { ...options, headers });
+            const body = await response.text();
+            if (!response.ok) throw new Error(`${response.status} ${body}`);
+            return body ? JSON.parse(body) : null;
+          }
+          const owner = 'tea-dc3ufo6i0phs738k5i80';
+          const services = await request(`/services?ownerId=${owner}&limit=100`);
+          let service = services.map(item => item.service).find(item => item.name === 'guangluqi');
+          if (!service) {
+            const result = await request('/services', { method: 'POST', body: JSON.stringify({
+              type: 'web_service', name: 'guangluqi', ownerId: owner,
+              repo: 'https://github.com/zyn325/linye-homepage', branch: 'main', autoDeploy: 'yes',
+              envVars: [{ key: 'NODE_VERSION', value: '22.16.0' }, { key: 'DATA_DIR', value: '/tmp/guangluqi-data' }],
+              serviceDetails: { runtime: 'node', plan: 'free', region: 'singapore', healthCheckPath: '/health',
+                envSpecificDetails: { buildCommand: 'corepack pnpm install --frozen-lockfile && corepack pnpm build', startCommand: 'corepack pnpm start' } }
+            }) });
+            service = result.service;
+          }
+          console.log(JSON.stringify({ id: service.id, name: service.name, url: service.serviceDetails?.url }));
+          JS
