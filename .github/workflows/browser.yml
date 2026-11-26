@@ -1,0 +1,28 @@
+name: Browser playtest
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: corepack enable && corepack pnpm install --frozen-lockfile
+      - run: corepack pnpm build
+      - run: npm install --prefix /tmp/browser-tools playwright
+      - run: /tmp/browser-tools/node_modules/.bin/playwright install --with-deps chromium
+      - name: Playtest
+        run: |
+          corepack pnpm start > /tmp/lightpath-server.log 2>&1 &
+          for i in $(seq 1 30); do curl -sf http://localhost:5173/health && break || sleep 1; done
+          NODE_PATH=/tmp/browser-tools/node_modules node tests/browser.cjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: screenshots
+          path: /tmp/lightpath-screenshots
