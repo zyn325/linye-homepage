@@ -5,19 +5,23 @@
   "type": "module",
   "scripts": {
     "dev": "node --import tsx server/index.ts",
-    "build": "tsc --noEmit && vite build",
+    "build": "tsc --noEmit && tsc --noEmit -p cloudflare/tsconfig.json && vite build",
     "start": "node --import tsx server/index.ts --production",
-    "test": "node --import tsx --test tests/*.test.ts"
+    "test": "node --import tsx --test tests/*.test.ts",
+    "dev:cloudflare": "wrangler dev --port 5173",
+    "deploy": "pnpm build && wrangler deploy"
   },
   "dependencies": {
     "phaser": "^3.90.0",
-    "ws": "^8.18.0",
     "tsx": "^4.20.0",
-    "vite": "^6.4.0"
+    "vite": "^6.4.0",
+    "ws": "^8.18.0"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261125.1",
     "@types/node": "^24.0.0",
     "@types/ws": "^8.18.0",
-    "typescript": "^5.9.0"
+    "typescript": "^5.9.0",
+    "wrangler": "^4.168.0"
   }
 }

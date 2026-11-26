@@ -22,9 +22,21 @@ corepack pnpm start
 部署时将 `DATA_DIR` 放在持久卷上，并使用支持 WebSocket 的服务托管。
 当前房间存储适用于单进程部署。
 
-`render.yaml` 提供 Render 免费实例的试运行配置。免费实例磁盘为临时存储，重启或重新部署会丢失房间。
-需要跨重启保留对局时，应使用带持久卷的实例并将 `DATA_DIR` 改为持久卷路径。
-GitHub Pages 仅提供人机模式，完整好友联机请打开 Node.js 服务的网址。
+## Cloudflare 免费部署
+
+Cloudflare Workers 提供网页和实时连接，每个好友房间由一个 SQLite Durable Object 保存。
+房间状态在服务器重启和休眠后仍可恢复，网页刷新时使用当前标签页身份重新进入。
+
+```sh
+corepack pnpm build
+corepack pnpm dev:cloudflare
+corepack pnpm exec wrangler login
+corepack pnpm deploy
+```
+
+`wrangler.jsonc` 声明免费方案支持的 SQLite 存储迁移和网页资源绑定。
+GitHub Pages 提供人机入口，完整好友联机使用部署后的 Cloudflare 网址。
+Cloudflare 免费额度用尽时服务会受到限制。
 
 ## 操作
 

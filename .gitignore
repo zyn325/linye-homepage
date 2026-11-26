@@ -3,6 +3,8 @@ node_modules/
 dist/
 data/
 .env
+.dev.vars*
+.wrangler/
 .DS_Store
 *~
 ~$*

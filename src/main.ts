@@ -103,12 +103,18 @@ function connect(action: Record<string, unknown>) {
   connectionAction = action;
   const endpoint = new URL('/ws', serviceOrigin);
   endpoint.protocol = endpoint.protocol === 'https:' ? 'wss:' : 'ws:';
+  endpoint.searchParams.set('room', String(action.code));
   const ws = new WebSocket(endpoint);
   socket = ws;
-  ws.onopen = () => { online = true; ws.send(JSON.stringify(connectionAction)); update(); };
+  ws.onopen = () => { if (socket !== ws) return; online = true; ws.send(JSON.stringify(action)); update(); };
   ws.onmessage = event => {
+    if (socket !== ws) return;
     const message = JSON.parse(event.data);
-    if (message.type === 'error') { toast(message.message); $('#start-game').removeAttribute('disabled'); $('#start-game').textContent = '进入房间 ↗'; return; }
+    if (message.type === 'error') {
+      toast(message.message);
+      if (!room || room.code !== action.code) closeConnection();
+      $('#start-game').removeAttribute('disabled'); $('#start-game').textContent = '进入房间 ↗'; return;
+    }
     if (message.type !== 'room') return;
     const previousLength = state.moves.length;
     room = message;
@@ -120,6 +126,7 @@ function connect(action: Record<string, unknown>) {
     ($('#setup') as HTMLDialogElement).close(); showPlay(); update();
   };
   ws.onclose = () => {
+    if (socket !== ws) return;
     online = false; update();
     if (connectionAction) reconnectTimer = window.setTimeout(() => { if (connectionAction) connect(connectionAction); }, 1800);
   };
@@ -208,7 +215,7 @@ $('#setup-form').addEventListener('submit', event => {
   event.preventDefault();
   $('#start-game').click();
 });
-$('#start-game').onclick = () => {
+$('#start-game').onclick = async () => {
   nickname = $<HTMLInputElement>('#nickname').value.trim() || '旅光者';
   localStorage.setItem('lightpath-name', nickname);
   if (setupMode === 'ai') {
@@ -226,7 +233,22 @@ $('#start-game').onclick = () => {
       return;
     }
     $<HTMLButtonElement>('#start-game').disabled = true; $('#start-game').textContent = '连接中…';
-    connect({ type: code ? 'join' : 'create', code, name: nickname, token: token() });
+    try {
+      let roomCode = code;
+      if (!roomCode) {
+        const response = await fetch(new URL('/api/rooms', serviceOrigin), {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ type: 'create', name: nickname, token: token() })
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.message || '创建房间失败，请重试');
+        roomCode = result.code;
+      }
+      connect({ type: 'join', code: roomCode, name: nickname, token: token() });
+    } catch (error) {
+      toast(error instanceof Error ? error.message : '连接失败，请重试');
+      $('#start-game').removeAttribute('disabled'); $('#start-game').textContent = '进入房间 ↗';
+    }
   }
 };
 $('#slash').onclick = () => { orientation = '/'; update(); };

@@ -58,9 +58,32 @@ function broadcast(code: string) {
 }
 const mime: Record<string, string> = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.png': 'image/png', '.svg': 'image/svg+xml', '.woff2': 'font/woff2' };
 const vite = production ? null : await (await import('vite')).createServer({ server: { middlewareMode: true }, appType: 'spa' });
-const server = createServer((req, res) => {
+const server = createServer(async (req, res) => {
   const pathname = new URL(req.url || '/', 'http://localhost').pathname;
   if (pathname === '/health') { res.writeHead(200, { 'content-type': 'application/json' }); res.end('{"ok":true}'); return; }
+  if (pathname === '/api/rooms' && req.method === 'POST') {
+    res.setHeader('content-type', 'application/json');
+    try {
+      let body = '';
+      for await (const chunk of req) {
+        body += chunk;
+        if (body.length > 16384) throw new Error('请求过大');
+      }
+      const message = JSON.parse(body);
+      const name = typeof message.name === 'string' ? message.name.trim().slice(0, 16) : '';
+      const token = message.token;
+      if (!name || typeof token !== 'string' || !/^[a-f0-9]{64}$/.test(token)) throw new Error('昵称或身份信息无效');
+      let code: string;
+      do { code = randomBytes(3).toString('hex').toUpperCase(); } while (rooms.has(code));
+      persist({ code, seats: { red: { name, token, ready: false } }, state: emptyGame(), started: false,
+        version: 0, drawOffer: null, rematch: [], history: [], updatedAt: Date.now() });
+      res.end(JSON.stringify({ code }));
+    } catch (error) {
+      res.statusCode = 400;
+      res.end(JSON.stringify({ message: error instanceof Error ? error.message : '创建房间失败' }));
+    }
+    return;
+  }
   if (vite) { vite.middlewares(req, res); return; }
   try {
     const root = resolve('dist');

@@ -1,6 +1,7 @@
 const { chromium } = require('playwright');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
+const origin = process.env.TEST_ORIGIN || 'http://localhost:5173';
 
 async function main() {
   fs.mkdirSync('/tmp/lightpath-screenshots', { recursive: true });
@@ -8,7 +9,7 @@ async function main() {
   const page = await browser.newPage({ viewport: { width: 1365, height: 1000 } });
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
-  await page.goto('http://localhost:5173');
+  await page.goto(origin);
   await page.screenshot({ path: '/tmp/lightpath-screenshots/home.png', fullPage: true });
   await page.locator('#open-ai').click();
   await page.locator('#nickname').fill('测试玩家');
@@ -17,8 +18,10 @@ async function main() {
   await page.waitForTimeout(400);
   const clickCell = async (target, x, y) => {
     const canvas = await target.locator('#board canvas').boundingBox();
-    await target.mouse.click(canvas.x + (30 + (x - 0.5) * 40) / 580 * canvas.width,
-      canvas.y + (30 + (13.5 - y) * 40) / 580 * canvas.height);
+    await target.locator('#board canvas').click({ position: {
+      x: (30 + (x - 0.5) * 40) / 580 * canvas.width,
+      y: (30 + (13.5 - y) * 40) / 580 * canvas.height
+    } });
   };
   await clickCell(page, 1, 1);
   await page.locator('#confirm-move').click();
@@ -42,13 +45,13 @@ async function main() {
   const red = await browser.newPage();
   const blue = await browser.newPage();
   for (const target of [red, blue]) target.on('pageerror', error => errors.push(error.message));
-  await red.goto('http://localhost:5173');
+  await red.goto(origin);
   await red.locator('#open-friend').click();
   await red.locator('#nickname').fill('红方玩家');
   await red.locator('#start-game').click();
   await red.locator('#room-code').waitFor({ state: 'visible' });
   const code = await red.locator('#room-code').textContent();
-  await blue.goto(`http://localhost:5173/?room=${code}`);
+  await blue.goto(`${origin}/?room=${code}`);
   await blue.locator('#nickname').fill('蓝方玩家');
   await blue.locator('#start-game').click();
   await blue.locator('#ready').waitFor({ state: 'visible' });
