@@ -71,7 +71,7 @@ async function count(page,n){await page.waitForFunction(n=>document.querySelecto
   await guestContext.setOffline(true);await guest.evaluate(()=>window.dispatchEvent(new Event('offline')));
   await page.waitForFunction(()=>document.querySelector('#connection-label').textContent.includes('断线'));
   await guest.locator('#reconnect-now').waitFor({state:'visible'});
-  await guestContext.setOffline(false);await guest.locator('#reconnect-now').click();
+  await guest.locator('#reconnect-now').click();await guestContext.setOffline(false);
   await guest.waitForFunction(()=>document.querySelector('#connection-label').textContent.includes('双方在线'));
   await count(guest,1);
   await cell(guest,13,1);await guest.locator('#confirm-move').click();await count(page,2);

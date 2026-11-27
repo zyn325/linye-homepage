@@ -24,6 +24,7 @@ export function createBoard(parent: HTMLElement, onSelect: (x: number, y: number
   let lastMoveKey = '';
   class BoardScene extends Phaser.Scene {
     graphics!: Phaser.GameObjects.Graphics;
+    feedback?: Phaser.GameObjects.Rectangle;
     create() {
       scene = this;
       this.graphics = this.add.graphics();
@@ -156,10 +157,12 @@ export function createBoard(parent: HTMLElement, onSelect: (x: number, y: number
       }
     }
     flash() {
+      if (this.feedback) { this.tweens.killTweensOf(this.feedback); this.feedback.destroy(); }
       const move = view.state.moves.at(-1);
       if (!move || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
       const p = this.center(move.x, move.y);
       const ring = this.add.rectangle(p.x, p.y, 34, 34).setStrokeStyle(2, COLORS[move.side]);
+      this.feedback = ring;
       this.tweens.add({ targets: ring, scaleX: 1.65, scaleY: 1.65, alpha: 0, duration: 420, onComplete: () => ring.destroy() });
     }
   }
