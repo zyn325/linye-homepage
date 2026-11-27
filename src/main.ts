@@ -103,6 +103,9 @@ function syncAccount(user: AccountUser | null) {
     playVisible = false; $('#play').classList.add('hidden'); $('#home').classList.remove('hidden');
     history.replaceState(null, '', sitePath);
     toast(user ? '已登录，请重新进入好友房间' : '已退出账号，好友连接已断开');
+  } else if (user && mode === 'friend' && connectionAction) {
+    // Password changes rotate the cookie. Rebind the socket to the new session.
+    connect(connectionAction);
   }
   if (user) nickname = user.username;
   else if (changedIdentity) nickname = localStorage.getItem('lightpath-guest-name') || '旅光者';
