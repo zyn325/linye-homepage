@@ -1,17 +1,18 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { AccountService, accountRequest, digest, usernameInput, type AccountStore } from '../shared/accounts';
-function fixture() {
+function fixture(admin: { username?: string; createdBefore?: number } = {}) {
   const data = new Map<string, unknown>(); let now = Date.now();
   const store: AccountStore = { async get<T>(key: string) { return structuredClone(data.get(key)) as T | undefined; },
-    async put(key, value) { data.set(key, structuredClone(value)); }, async delete(key) { data.delete(key); } };
-  const service = new AccountService(store, () => now);
+    async put(key, value) { data.set(key, structuredClone(value)); }, async delete(key) { data.delete(key); }, async list<T>({ prefix, startAfter, limit }: { prefix: string; startAfter?: string; limit: number }) { return new Map([...data.entries()].filter(([key]) => key.startsWith(prefix) && (!startAfter || key > startAfter)).sort(([a], [b]) => a < b ? -1 : 1).slice(0, limit).map(([key, value]) => [key, structuredClone(value) as T])); } };
+  const service = new AccountService(store, () => now, admin);
   async function call(action: string, body?: unknown, cookie = '', ip = 'test') {
     const request = new Request('https://guangluqi.com/api/auth/' + action, { method: body === undefined ? 'GET' : 'POST',
       headers: { Origin: 'https://guangluqi.com', 'Content-Type': 'application/json', Cookie: cookie }, ...(body !== undefined ? { body: JSON.stringify(body) } : {}) });
     return service.handle(await accountRequest(request, ip));
   }
-  return { service, data, call, advance(ms: number) { now += ms; } };
+  async function stats(cookie = '') { return service.handle(await accountRequest(new Request('https://guangluqi.com/api/admin/stats', { headers: { Cookie: cookie } }), 'test')); }
+  return { service, data, call, stats, advance(ms: number) { now += ms; } };
 }
 const password = 'LongPassphrase_2026!';
 const cookieFrom = (response: Response) => response.headers.get('Set-Cookie')!.split(';')[0];
@@ -75,4 +76,35 @@ test('verified identity and reserved guest names are internal and do not expose 
   const me = await (await f.call('me', undefined, cookie)).json(); assert.equal('roomToken' in me.user, false); assert.equal('sessionHash' in me.user, false);
   const reserved = await (await f.service.handle(new Request('https://accounts/internal/guest-name?name=' + encodeURIComponent('唯一玩家')))).json();
   assert.equal(reserved.allowed, false);
+});
+
+test('admin is pinned to an existing account; guests, players and late name claims are rejected', async () => {
+  const f = fixture({ username: '作者大大', createdBefore: Date.now() + 1000 });
+  const owner = await f.call('register', { username: '作者大大', password }); const cookie = cookieFrom(owner);
+  const id = (await owner.clone().json()).user.id;
+  assert.equal((await f.stats()).status, 401);
+  const normal = await f.call('register', { username: '其他玩家', password });
+  assert.equal((await f.stats(cookieFrom(normal))).status, 403);
+  assert.equal((await f.stats(cookie)).status, 200);
+  assert.equal(f.data.get('admin:account-id'), id);
+  assert.equal((await (await f.call('me', undefined, cookie)).json()).user.isAdmin, true);
+  assert.equal((await (await f.call('me', undefined, cookieFrom(normal))).json()).user.isAdmin, undefined);
+  await f.call('logout', {}, cookie); assert.equal((await f.stats(cookie)).status, 401);
+  const late = fixture({ username: '作者大大', createdBefore: Date.now() - 1000 });
+  const impostor = await late.call('register', { username: '作者大大', password, isAdmin: true });
+  assert.equal((await late.stats(cookieFrom(impostor))).status, 403);
+});
+test('stats backfill old users, exclude non-account records, invalidate on registration and respect Beijing midnight', async () => {
+  const f = fixture({ username: '作者大大', createdBefore: Date.now() + 1000 });
+  const owner = await f.call('register', { username: '作者大大', password }), cookie = cookieFrom(owner);
+  f.data.set('session:fake', { createdAt: Date.now() }); f.data.set('rate:fake', { count: 123 });
+  let response = await f.stats(cookie); assert.equal(response.headers.get('Cache-Control'), 'no-store');
+  let stats = await response.json(); assert.equal(stats.total, 1); assert.equal(stats.today, 1); assert.equal(stats.daily.length, 30);
+  const today = new Date(Date.now() + 8 * 3600_000).toISOString().slice(0, 10);
+  const midnight = Date.parse(today + 'T00:00:00+08:00') + 86400_000;
+  f.advance(midnight - Date.now() + 2000);
+  await f.call('register', { username: '翌日玩家', password });
+  stats = await (await f.stats(cookie)).json(); assert.equal(stats.total, 2); assert.equal(stats.today, 1); assert.equal(stats.last7Days, 2);
+  f.advance(8 * 86400_000); stats = await (await f.stats(cookie)).json(); assert.equal(stats.total, 2); assert.equal(stats.today, 0); assert.equal(stats.last7Days, 0);
+  assert.equal(JSON.stringify(stats).includes('password'), false); assert.equal(JSON.stringify(stats).includes('sessionHash'), false);
 });

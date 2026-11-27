@@ -1,4 +1,4 @@
-export interface AccountUser { id: string; username: string; createdAt: number }
+export interface AccountUser { id: string; username: string; createdAt: number; isAdmin?: boolean }
 interface PasswordHash { salt: string; hash: string; iterations: number }
 interface Session { accountId: string; expiresAt: number; version: number }
 interface User extends AccountUser {
@@ -9,6 +9,7 @@ export interface AccountStore {
   get<T>(key: string): Promise<T | undefined>;
   put<T>(key: string, value: T): Promise<unknown>;
   delete(key: string): Promise<unknown>;
+  list?<T>(options: { prefix: string; startAfter?: string; limit: number }): Promise<Map<string, T>>;
 }
 export interface AccountIdentity extends AccountUser { roomToken: string; sessionHash: string }
 const encoder = new TextEncoder();
@@ -49,9 +50,38 @@ export class AccountError extends Error {
   constructor(message: string, public status = 400, public retryAfter?: number) { super(message); }
 }
 const publicUser = (user: User): AccountUser => ({ id: user.id, username: user.username, createdAt: user.createdAt });
+export interface AdminStats { total: number; today: number; last7Days: number; daily: { date: string; count: number }[]; updatedAt: number; timezone: string }
+interface Metrics { total: number; daily: Record<string, number> }
+const dayKey = (timestamp: number) => new Date(timestamp + 8 * 3600_000).toISOString().slice(0, 10);
 export class AccountService {
   private queue = Promise.resolve();
-  constructor(private store: AccountStore, private now = () => Date.now()) {}
+  constructor(private store: AccountStore, private now = () => Date.now(), private admin: { username?: string; createdBefore?: number } = {}) {}
+  private async isAdmin(user: AccountUser): Promise<boolean> {
+    let id = await this.store.get<string>('admin:account-id');
+    if (!id && this.admin.username && this.admin.createdBefore && user.createdAt < this.admin.createdBefore
+      && usernameInput(user.username).canonical === usernameInput(this.admin.username).canonical) {
+      // Pin an existing account ID once. Future registrations and request bodies cannot claim admin.
+      id = user.id; await this.store.put('admin:account-id', id);
+    }
+    return id === user.id;
+  }
+  private async stats(): Promise<AdminStats> {
+    let metrics = await this.store.get<Metrics>('metrics:registrations');
+    if (!metrics) {
+      if (!this.store.list) throw new AccountError('统计暂时不可用', 503);
+      metrics = { total: 0, daily: {} }; let startAfter: string | undefined;
+      for (;;) {
+        const batch = await this.store.list<User>({ prefix: 'user:', startAfter, limit: 500 });
+        for (const user of batch.values()) { const day = dayKey(user.createdAt); metrics.total++; metrics.daily[day] = (metrics.daily[day] || 0) + 1; }
+        if (batch.size < 500) break;
+        startAfter = [...batch.keys()].at(-1);
+      }
+      await this.store.put('metrics:registrations', metrics);
+    }
+    const now = this.now(), today = dayKey(now);
+    const daily = Array.from({ length: 30 }, (_, i) => { const date = dayKey(now - (29 - i) * 86400_000); return { date, count: metrics.daily[date] || 0 }; });
+    return { total: metrics.total, today: metrics.daily[today] || 0, last7Days: daily.slice(-7).reduce((sum, day) => sum + day.count, 0), daily, updatedAt: now, timezone: 'Asia/Shanghai' };
+  }
   async handle(request: Request): Promise<Response> {
     // Serialize uniqueness checks and session updates, including across async hashing.
     const prior = this.queue;
@@ -106,7 +136,7 @@ export class AccountService {
     user.sessions = [...keep, { hash, expiresAt }];
     await this.store.put('user:' + user.id, user);
     await this.store.put<Session>('session:' + hash, { accountId: user.id, expiresAt, version: user.version });
-    return this.json({ user: publicUser(user), ...(recoveryCode ? { recoveryCode } : {}) }, 200, { 'Set-Cookie': this.cookie(secret, request) });
+    return this.json({ user: { ...publicUser(user), ...(await this.isAdmin(user) ? { isAdmin: true } : {}) }, ...(recoveryCode ? { recoveryCode } : {}) }, 200, { 'Set-Cookie': this.cookie(secret, request) });
   }
   private async revoke(user: User) {
     for (const session of user.sessions) await this.store.delete('session:' + session.hash);
@@ -119,9 +149,16 @@ export class AccountService {
       const { username, user } = await this.named(new URL(request.url).searchParams.get('name'));
       return this.json({ allowed: !user, username });
     }
+    if (path === '/api/admin/stats') {
+      const identity = await this.session(request);
+      if (!identity) throw new AccountError('请先登录你的制作者账号', 401);
+      if (!await this.isAdmin(identity)) throw new AccountError('此页面仅限制作者访问', 403);
+      if (request.method !== 'GET') throw new AccountError('请求方式不支持', 405);
+      return this.json(await this.stats());
+    }
     if (path === '/api/auth/me' && request.method === 'GET') {
       const identity = await this.session(request);
-      return this.json({ user: identity ? { id: identity.id, username: identity.username, createdAt: identity.createdAt } : null });
+      return this.json({ user: identity ? { id: identity.id, username: identity.username, createdAt: identity.createdAt, ...(await this.isAdmin(identity) ? { isAdmin: true } : {}) } : null });
     }
     if (request.method !== 'POST') throw new AccountError('请求方式不支持', 405);
     const text = await request.text();
@@ -140,6 +177,7 @@ export class AccountService {
       const user: User = { id: crypto.randomUUID(), username, canonical, createdAt: this.now(), password: await hashPassword(password),
         recoveryHash: await digest(recoveryCode), roomToken: randomHex(), version: 1, sessions: [] };
       // Persist the user first; the name is published only after its record exists.
+      await this.store.delete('metrics:registrations');
       await this.store.put('user:' + user.id, user);
       await this.store.put('name:' + await digest(canonical), user.id);
       return this.issue(user, request, recoveryCode);

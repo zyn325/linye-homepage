@@ -1,0 +1,19 @@
+const {chromium}=require('playwright');
+const assert=require('node:assert/strict');
+(async()=>{
+ const browser=await chromium.launch({headless:true});const errors=[];
+ const context=await browser.newContext({viewport:{width:1365,height:1000}});const page=await context.newPage();page.on('pageerror',e=>errors.push(e.message));
+ const origin=process.env.TEST_ORIGIN||'http://localhost:5173';await page.goto(origin+'/admin');await page.locator('#admin-login').waitFor({state:'visible'});assert.match(await page.locator('#admin-error').textContent(),/登录/);
+ const password=require('node:crypto').randomBytes(20).toString('hex');
+ const owner=await page.request.post(origin+'/api/auth/register',{headers:{Origin:origin},data:{username:process.env.ADMIN_TEST_USERNAME||'作者大大',password}});assert.equal(owner.status(),200);
+ await page.reload();await page.locator('#admin-data').waitFor({state:'visible'});assert.equal(await page.locator('#admin-total').textContent(),'1');assert.equal(await page.locator('#admin-today').textContent(),'1');assert.equal(await page.locator('#admin-week').textContent(),'1');
+ assert.equal(await page.locator('#admin-chart rect').count(),30);assert.equal(await page.locator('#admin-link').isVisible(),true);
+ await page.screenshot({path:'/tmp/lightpath-screenshots/admin-desktop.png',fullPage:true});
+ const guest=await browser.newContext();const normal=await guest.newPage();await normal.goto(origin+'/admin');
+ const response=await normal.request.post(origin+'/api/auth/register',{headers:{Origin:origin},data:{username:'普通'+require('node:crypto').randomBytes(5).toString('hex'),password}});assert.equal(response.status(),200);
+ await normal.reload();await normal.waitForFunction(()=>document.querySelector('#admin-error').textContent.includes('仅限'));assert.equal(await normal.locator('#admin-data').isVisible(),false);assert.equal((await normal.request.get(origin+'/api/admin/stats')).status(),403);
+ await page.locator('#admin-refresh').click();await page.waitForFunction(()=>document.querySelector('#admin-total').textContent==='2');
+ await page.setViewportSize({width:390,height:844});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);await page.screenshot({path:'/tmp/lightpath-screenshots/admin-mobile.png',fullPage:true});
+ await page.locator('#account-open').click();await page.locator('#account-logout').click();await page.locator('#admin-login').waitFor({state:'visible'});assert.equal(await page.locator('#admin-data').isVisible(),false);assert.deepEqual(errors,[]);
+ console.log('管理页通过：未登录拒绝、仅作者可见、普通账号403、实时刷新、趋势图、退出清空、手机布局。');await browser.close();
+})().catch(e=>{console.error(e);process.exit(1)});

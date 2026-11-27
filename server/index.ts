@@ -33,9 +33,10 @@ function persistAccounts() {
 const accountStore: AccountStore = {
   async get<T>(key: string) { return structuredClone(accountData.get(key)) as T | undefined; },
   async put(key, value) { accountData.set(key, structuredClone(value)); persistAccounts(); },
+  async list<T>({ prefix, startAfter, limit }: { prefix: string; startAfter?: string; limit: number }) { return new Map([...accountData.entries()].filter(([key]) => key.startsWith(prefix) && (!startAfter || key > startAfter)).sort(([a], [b]) => a.localeCompare(b)).slice(0, limit).map(([key, value]) => [key, structuredClone(value) as T])); },
   async delete(key) { accountData.delete(key); persistAccounts(); }
 };
-const accounts = new AccountService(accountStore);
+const accounts = new AccountService(accountStore, () => Date.now(), { username: process.env.ADMIN_USERNAME, createdBefore: Date.parse(process.env.ADMIN_CREATED_BEFORE || '') });
 async function accountFor(request: Request) {
   const prepared = await accountRequest(request, 'local');
   return accounts.resolveHash(prepared.headers.get('X-Session-Hash') || '');
@@ -83,7 +84,7 @@ const mime: Record<string, string> = { '.html': 'text/html; charset=utf-8', '.js
 const vite = production ? null : await (await import('vite')).createServer({ server: { middlewareMode: true }, appType: 'spa' });
 const server = createServer(async (req, res) => {
   const pathname = new URL(req.url || '/', 'http://localhost').pathname;
-  if (pathname.startsWith('/api/auth/')) {
+  if ((pathname.startsWith('/api/auth/') || pathname.startsWith('/api/admin/'))) {
     try {
       let body = '';
       for await (const chunk of req) { body += chunk; if (body.length > 4096) throw new AccountError('请求内容过长', 413); }

@@ -4,6 +4,7 @@
   "main": "cloudflare/worker.ts",
   "compatibility_date": "2026-11-26",
   "workers_dev": true,
+  "vars": { "ADMIN_USERNAME": "作者大大", "ADMIN_CREATED_BEFORE": "2026-11-28T01:53:46+08:00" },
   "routes": [
     { "pattern": "guangluqi.com", "custom_domain": true },
     { "pattern": "www.guangluqi.com", "custom_domain": true }

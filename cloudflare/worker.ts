@@ -2,7 +2,7 @@ import { DurableObject } from 'cloudflare:workers';
 import { emptyGame, other, placeMove, type GameState, type Side } from '../src/game/rules';
 import { AccountService, accountRequest, AccountError, type AccountIdentity } from '../shared/accounts';
 
-interface Env { ROOMS: DurableObjectNamespace<ChessRoom>; ACCOUNTS: DurableObjectNamespace<AccountDirectory>; ASSETS: Fetcher }
+interface Env { ADMIN_USERNAME?: string; ADMIN_CREATED_BEFORE?: string; ROOMS: DurableObjectNamespace<ChessRoom>; ACCOUNTS: DurableObjectNamespace<AccountDirectory>; ASSETS: Fetcher }
 interface Seat { name: string; token: string; ready: boolean; accountId?: string }
 interface Room {
   code: string;
@@ -53,7 +53,7 @@ export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
     if (url.pathname === '/health') return Response.json({ ok: true });
-    if (url.pathname.startsWith('/api/auth/')) {
+    if ((url.pathname.startsWith('/api/auth/') || url.pathname.startsWith('/api/admin/'))) {
       try { return await directory(env).fetch(await accountRequest(request, request.headers.get('CF-Connecting-IP') || 'unknown')); }
       catch (error) { return Response.json({ message: errorText(error) }, { status: error instanceof AccountError ? error.status : 503, headers: { 'Cache-Control': 'no-store' } }); }
     }
@@ -95,7 +95,7 @@ export default {
 
 export class AccountDirectory extends DurableObject<Env> {
   private accounts: AccountService;
-  constructor(ctx: DurableObjectState, env: Env) { super(ctx, env); this.accounts = new AccountService(ctx.storage); }
+  constructor(ctx: DurableObjectState, env: Env) { super(ctx, env); this.accounts = new AccountService(ctx.storage, () => Date.now(), { username: env.ADMIN_USERNAME, createdBefore: Date.parse(env.ADMIN_CREATED_BEFORE || '') }); }
   fetch(request: Request) { return this.accounts.handle(request); }
 }
 

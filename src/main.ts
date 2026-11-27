@@ -1,4 +1,5 @@
 import './style.css';
+import { mountAdmin } from './admin';
 import { createAccounts, type AccountUser } from './accounts';
 import type { BoardView } from './board';
 import { difficultyNames, parseDifficulty, type Difficulty } from './game/ai';
@@ -7,13 +8,13 @@ import { invitationCode } from './game/invitation';
 import { emptyGame, legalMove, other, placeMove, restoreGame, type GameState, type Orientation, type Side } from './game/rules';
 
 const $ = <T extends HTMLElement = HTMLElement>(selector: string) => document.querySelector<T>(selector)!;
-const sitePath = new URL('.', location.href).pathname;
+const sitePath = location.pathname.startsWith('/admin') ? '/' : new URL('.', location.href).pathname;
 const serviceOrigin = localStorage.getItem('lightpath-service') || location.origin;
 const staticHosting = location.hostname.endsWith('.github.io');
 const onlineSite = 'https://guangluqi.com';
 const sideName = (side: Side) => side === 'red' ? '红方' : '蓝方';
 $('#app').innerHTML = `
-  <header class="site-header"><a href="${sitePath}" class="brand"><span class="brand-mark">╱</span><span>光路棋<small>LIGHTPATH</small></span></a><div class="header-actions"><button class="text-button" id="rules-open">玩法说明 <span>↗</span></button><button id="account-open" class="text-button account-trigger">登录 / 注册</button></div></header>
+  <header class="site-header"><a href="${sitePath}" class="brand"><span class="brand-mark">╱</span><span>光路棋<small>LIGHTPATH</small></span></a><div class="header-actions"><button class="text-button hidden" id="admin-link">管理</button><button class="text-button" id="rules-open">玩法说明 <span>↗</span></button><button id="account-open" class="text-button account-trigger">登录 / 注册</button></div></header>
   <main>
     <section id="home" class="home">
       <div class="intro"><p class="eyebrow"><span></span> 双人光学策略棋</p><h1>一面镜子，<br>另一种<span>可能。</span></h1><p class="intro-copy">让光转弯，让局势改变。<br>在十三乘十三的棋盘上，寻找通往对手的光路。</p>
@@ -98,6 +99,8 @@ function difficultyNote() {
 function syncAccount(user: AccountUser | null) {
   const changedIdentity = (accountUser?.id ?? null) !== (user?.id ?? null);
   accountUser = user;
+  $('#admin-link').classList.toggle('hidden', !user?.isAdmin);
+  if (typeof adminPage !== 'undefined' && location.pathname.replace(/\/$/, '') === '/admin') void adminPage.refresh();
   if (changedIdentity && mode === 'friend') {
     closeConnection(); room = null; sessionStorage.removeItem('lightpath-room');
     playVisible = false; $('#play').classList.add('hidden'); $('#home').classList.remove('hidden');
@@ -116,6 +119,12 @@ function syncAccount(user: AccountUser | null) {
   update();
 }
 const accounts = createAccounts($<HTMLButtonElement>('#account-open'), syncAccount);
+const adminPage = mountAdmin(() => accounts.open());
+$('#admin-link').onclick = () => {
+  if (staticHosting) { location.assign('https://guangluqi.com/admin'); return; }
+  stopAI(); closeConnection(); playVisible = false;
+  history.pushState(null, '', '/admin'); adminPage.show();
+};
 function toast(message: string) {
   $('#toast').textContent = message;
   $('#toast').classList.add('visible');
@@ -489,6 +498,7 @@ document.addEventListener('keydown', event => {
 const invite = new URLSearchParams(location.search).get('room');
 async function initialize() {
 await accounts.ready;
+if (location.pathname.replace(/\/$/, '') === '/admin') { adminPage.show(); return; }
 if (invite) {
   if (sessionStorage.getItem('lightpath-room') === invite.toUpperCase()) connect({ type: 'join', code: invite, name: nickname, token: token() });
   else openSetup('friend', invite);
@@ -517,5 +527,6 @@ if (!invite && new URLSearchParams(location.search).get('mode') === 'friend') op
 if (new URLSearchParams(location.search).get('account') === '1') accounts.open();
 update();
 }
+window.addEventListener('popstate', () => { if (location.pathname.replace(/\/$/, '') === '/admin') adminPage.show(); else { adminPage.hide(); $('#home').classList.remove('hidden'); } });
 void initialize();
 update();
