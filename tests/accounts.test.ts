@@ -12,7 +12,8 @@ function fixture(admin: { username?: string; createdBefore?: number } = {}) {
     return service.handle(await accountRequest(request, ip));
   }
   async function stats(cookie = '') { return service.handle(await accountRequest(new Request('https://guangluqi.com/api/admin/stats', { headers: { Cookie: cookie } }), 'test')); }
-  return { service, data, call, stats, advance(ms: number) { now += ms; } };
+  async function players(cookie = '', query = '') { return service.handle(await accountRequest(new Request('https://guangluqi.com/api/admin/players' + query, { headers: { Cookie: cookie } }), 'test')); }
+  return { service, data, call, stats, players, advance(ms: number) { now += ms; } };
 }
 const password = 'LongPassphrase_2026!';
 const cookieFrom = (response: Response) => response.headers.get('Set-Cookie')!.split(';')[0];
@@ -107,4 +108,27 @@ test('stats backfill old users, exclude non-account records, invalidate on regis
   stats = await (await f.stats(cookie)).json(); assert.equal(stats.total, 2); assert.equal(stats.today, 1); assert.equal(stats.last7Days, 2);
   f.advance(8 * 86400_000); stats = await (await f.stats(cookie)).json(); assert.equal(stats.total, 2); assert.equal(stats.today, 0); assert.equal(stats.last7Days, 0);
   assert.equal(JSON.stringify(stats).includes('password'), false); assert.equal(JSON.stringify(stats).includes('sessionHash'), false);
+});
+
+test('player directory is creator-only, paginates without gaps and exposes only public account fields', async () => {
+  const f = fixture({ username: '作者大大', createdBefore: Date.now() + 1000 });
+  const owner = await f.call('register', { username: '作者大大', password }), cookie = cookieFrom(owner);
+  const normal = await f.call('register', { username: '普通玩家', password });
+  assert.equal((await f.players()).status, 401);
+  assert.equal((await f.players(cookieFrom(normal))).status, 403);
+  for (let i = 0; i < 103; i++) {
+    const id = `00000000-0000-4000-8000-${String(i).padStart(12, '0')}`;
+    f.data.set('user:' + id, { id, username: '玩家' + i, createdAt: Date.now(), password: 'secret', sessions: ['secret'], recoveryHash: 'secret', roomToken: 'secret' });
+  }
+  const ids: string[] = []; let cursor: string | null = null;
+  do {
+    const response = await f.players(cookie, cursor ? '?after=' + cursor : '');
+    assert.equal(response.status, 200); assert.equal(response.headers.get('Cache-Control'), 'no-store');
+    const page = await response.json(); assert.ok(page.players.length <= 50);
+    for (const user of page.players) { assert.deepEqual(Object.keys(user).sort(), ['createdAt', 'id', 'username']); ids.push(user.id); }
+    cursor = page.nextCursor;
+  } while (cursor);
+  assert.equal(ids.length, 105); assert.equal(new Set(ids).size, 105);
+  assert.equal((await f.players(cookie, '?after=invalid')).status, 400);
+  await f.call('logout', {}, cookie); assert.equal((await f.players(cookie)).status, 401);
 });

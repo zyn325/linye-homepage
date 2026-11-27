@@ -51,6 +51,7 @@ export class AccountError extends Error {
 }
 const publicUser = (user: User): AccountUser => ({ id: user.id, username: user.username, createdAt: user.createdAt });
 export interface AdminStats { total: number; today: number; last7Days: number; daily: { date: string; count: number }[]; updatedAt: number; timezone: string }
+export interface AdminPlayers { players: AccountUser[]; nextCursor: string | null }
 interface Metrics { total: number; daily: Record<string, number> }
 const dayKey = (timestamp: number) => new Date(timestamp + 8 * 3600_000).toISOString().slice(0, 10);
 export class AccountService {
@@ -81,6 +82,14 @@ export class AccountService {
     const now = this.now(), today = dayKey(now);
     const daily = Array.from({ length: 30 }, (_, i) => { const date = dayKey(now - (29 - i) * 86400_000); return { date, count: metrics.daily[date] || 0 }; });
     return { total: metrics.total, today: metrics.daily[today] || 0, last7Days: daily.slice(-7).reduce((sum, day) => sum + day.count, 0), daily, updatedAt: now, timezone: 'Asia/Shanghai' };
+  }
+  private async players(url: URL): Promise<AdminPlayers> {
+    if (!this.store.list) throw new AccountError('玩家列表暂时不可用', 503);
+    const cursor = url.searchParams.get('after');
+    if (cursor !== null && !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(cursor)) throw new AccountError('分页位置无效');
+    const batch = await this.store.list<User>({ prefix: 'user:', ...(cursor ? { startAfter: 'user:' + cursor } : {}), limit: 51 });
+    const players = [...batch.values()].slice(0, 50).map(publicUser);
+    return { players, nextCursor: batch.size > 50 ? players.at(-1)!.id : null };
   }
   async handle(request: Request): Promise<Response> {
     // Serialize uniqueness checks and session updates, including across async hashing.
@@ -149,12 +158,12 @@ export class AccountService {
       const { username, user } = await this.named(new URL(request.url).searchParams.get('name'));
       return this.json({ allowed: !user, username });
     }
-    if (path === '/api/admin/stats') {
+    if (path === '/api/admin/stats' || path === '/api/admin/players') {
       const identity = await this.session(request);
       if (!identity) throw new AccountError('请先登录你的制作者账号', 401);
       if (!await this.isAdmin(identity)) throw new AccountError('此页面仅限制作者访问', 403);
       if (request.method !== 'GET') throw new AccountError('请求方式不支持', 405);
-      return this.json(await this.stats());
+      return this.json(path === '/api/admin/stats' ? await this.stats() : await this.players(new URL(request.url)));
     }
     if (path === '/api/auth/me' && request.method === 'GET') {
       const identity = await this.session(request);
