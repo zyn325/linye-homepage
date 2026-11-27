@@ -6,7 +6,7 @@ const $ = <T extends HTMLElement = HTMLElement>(selector: string) => document.qu
 const sitePath = new URL('.', location.href).pathname;
 const serviceOrigin = localStorage.getItem('lightpath-service') || location.origin;
 const staticHosting = location.hostname.endsWith('.github.io');
-const onlineSite = 'https://guangluqi.guangluqi.workers.dev';
+const onlineSite = 'https://guangluqi.com';
 const sideName = (side: Side) => side === 'red' ? '红方' : '蓝方';
 $('#app').innerHTML = `
   <header class="site-header"><a href="${sitePath}" class="brand"><span class="brand-mark">╱</span><span>光路棋<small>LIGHTPATH</small></span></a><button class="text-button" id="rules-open">玩法说明 <span>↗</span></button></header>

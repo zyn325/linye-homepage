@@ -4,6 +4,10 @@
   "main": "cloudflare/worker.ts",
   "compatibility_date": "2026-11-26",
   "workers_dev": true,
+  "routes": [
+    { "pattern": "guangluqi.com", "custom_domain": true },
+    { "pattern": "www.guangluqi.com", "custom_domain": true }
+  ],
   "assets": {
     "directory": "./dist",
     "binding": "ASSETS",
