@@ -8,6 +8,10 @@ async function main() {
   const browser = await chromium.launch({ headless: true });
   const page = await browser.newPage({ viewport: { width: 1365, height: 1000 } });
   const errors = [];
+  const externalFontRequests = [];
+  page.on('request', request => {
+    if (/^https:\/\/fonts\.(googleapis|gstatic)\.com\//.test(request.url())) externalFontRequests.push(request.url());
+  });
   page.on('pageerror', error => errors.push(error.message));
   await page.goto(origin);
   await page.screenshot({ path: '/tmp/lightpath-screenshots/home.png', fullPage: true });
@@ -94,6 +98,7 @@ async function main() {
   await page.locator('#rules-open').click();
   await page.screenshot({ path: '/tmp/lightpath-screenshots/rules.png', fullPage: true });
   assert.deepEqual(errors, []);
+  assert.deepEqual(externalFontRequests, []);
   console.log('浏览器检查通过：人机回应、悔棋、禁放格、朝向、刷新、手机布局、房间、准备、同步、恢复、和棋、再来一局。');
   await browser.close();
 }
