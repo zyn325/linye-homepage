@@ -32,6 +32,7 @@ jobs:
           node tests/rooms.cjs
           NODE_PATH=/tmp/browser-tools/node_modules node tests/browser.cjs
           NODE_PATH=/tmp/browser-tools/node_modules node tests/upgrades.cjs
+          NODE_PATH=/tmp/browser-tools/node_modules node tests/accounts.cjs
       - uses: actions/upload-artifact@v4
         if: always()
         with:

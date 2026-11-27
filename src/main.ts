@@ -1,4 +1,5 @@
 import './style.css';
+import { createAccounts, type AccountUser } from './accounts';
 import type { BoardView } from './board';
 import { difficultyNames, parseDifficulty, type Difficulty } from './game/ai';
 import { lessons, lessonState } from './game/tutorial';
@@ -12,7 +13,7 @@ const staticHosting = location.hostname.endsWith('.github.io');
 const onlineSite = 'https://guangluqi.com';
 const sideName = (side: Side) => side === 'red' ? '红方' : '蓝方';
 $('#app').innerHTML = `
-  <header class="site-header"><a href="${sitePath}" class="brand"><span class="brand-mark">╱</span><span>光路棋<small>LIGHTPATH</small></span></a><button class="text-button" id="rules-open">玩法说明 <span>↗</span></button></header>
+  <header class="site-header"><a href="${sitePath}" class="brand"><span class="brand-mark">╱</span><span>光路棋<small>LIGHTPATH</small></span></a><div class="header-actions"><button class="text-button" id="rules-open">玩法说明 <span>↗</span></button><button id="account-open" class="text-button account-trigger">登录 / 注册</button></div></header>
   <main>
     <section id="home" class="home">
       <div class="intro"><p class="eyebrow"><span></span> 双人光学策略棋</p><h1>一面镜子，<br>另一种<span>可能。</span></h1><p class="intro-copy">让光转弯，让局势改变。<br>在十三乘十三的棋盘上，寻找通往对手的光路。</p>
@@ -35,12 +36,12 @@ $('#app').innerHTML = `
       <p class="panel-tip">己方镜子可反射或透射<br>对方镜子必须反射</p></aside></div>
     </section>
   </main><footer><span>光路棋</span><span>每一折，皆有可能。</span></footer>
-  <dialog id="setup"><form method="dialog" id="setup-form"><button class="dialog-close" aria-label="关闭" value="cancel" formnovalidate>×</button><p class="eyebrow" id="setup-kicker">独自推演</p><h2 id="setup-title">开始一场光路对决</h2><div class="form-field"><label for="nickname">你的昵称</label><input id="nickname" maxlength="16" placeholder="旅光者" autocomplete="nickname" /></div><div id="ai-settings"><div class="form-field"><label for="difficulty">电脑难度</label><select id="difficulty"><option value="easy">入门 · 熟悉反射与透射</option><option value="standard" selected>标准 · 进攻、防守与识别封锁</option><option value="hard">挑战 · 多步推演，争夺关键位置</option></select><p id="difficulty-note" class="form-note">识别直接威胁，兼顾光路与光源防守。</p></div><div class="form-field"><label for="human-side">选择阵营</label><select id="human-side"><option value="red">红方 · 先手</option><option value="blue">蓝方 · 后手</option></select></div></div><div id="friend-settings" class="hidden"><div class="form-field"><label for="join-code">加入已有房间</label><input id="join-code" maxlength="200" placeholder="输入房间号或粘贴邀请链接，留空创建" /></div><p class="form-note">创建房间后，把邀请链接分享给朋友。双方准备后开局。</p></div><button type="button" id="start-game" class="primary full">开始对局 ↗</button></form></dialog>
+  <dialog id="setup"><form method="dialog" id="setup-form"><button class="dialog-close" aria-label="关闭" value="cancel" formnovalidate>×</button><p class="eyebrow" id="setup-kicker">独自推演</p><h2 id="setup-title">开始一场光路对决</h2><div class="form-field"><label for="nickname">你的昵称</label><input id="nickname" maxlength="16" placeholder="旅光者" autocomplete="nickname" /><p id="account-note">游客可以直接开始对局，也可以登录以使用唯一账号名。</p></div><div id="ai-settings"><div class="form-field"><label for="difficulty">电脑难度</label><select id="difficulty"><option value="easy">入门 · 熟悉反射与透射</option><option value="standard" selected>标准 · 进攻、防守与识别封锁</option><option value="hard">挑战 · 多步推演，争夺关键位置</option></select><p id="difficulty-note" class="form-note">识别直接威胁，兼顾光路与光源防守。</p></div><div class="form-field"><label for="human-side">选择阵营</label><select id="human-side"><option value="red">红方 · 先手</option><option value="blue">蓝方 · 后手</option></select></div></div><div id="friend-settings" class="hidden"><div class="form-field"><label for="join-code">加入已有房间</label><input id="join-code" maxlength="200" placeholder="输入房间号或粘贴邀请链接，留空创建" /></div><p class="form-note">创建房间后，把邀请链接分享给朋友。双方准备后开局。</p></div><button type="button" id="start-game" class="primary full">开始对局 ↗</button></form></dialog>
   <dialog id="rules-dialog"><button class="dialog-close" id="rules-close" aria-label="关闭">×</button><p class="eyebrow">让光找到出路</p><h2>光路棋怎么玩</h2><div class="rules-copy"><h3>轮流放置镜子</h3><p>红方先行，每回合在空格放一面己方镜子，选择 / 或 \\ 朝向。落定后固定。同阵营的镜子不能沿镜面方向在对角相邻格首尾相接成直线，例如 (1, 1) 与 (2, 2) 的两面 / 镜，以及 (1, 2) 与 (2, 1) 的两面 \\ 镜。不同阵营可以这样连接，隔有空格也允许。光源格和四个斜纹禁放格禁止落镜，禁放格允许光通过。</p><h3>构筑你的光路</h3><p>红方光源位于 (5, 9)，向上或向左出光。蓝方位于 (9, 5)，向下或向右出光。光沿行列传播，镜面反射使光转向 90°。</p><div class="reflection-guide">╱　上 ↔ 右　下 ↔ 左<br>╲　上 ↔ 左　下 ↔ 右</div><p>遇到己方镜子，可以反射或透射，每次选择独立。遇到对方镜子，必须反射。系统自动寻找可行路径，无须手动选择光线。</p><h3>击中对方光源即可获胜</h3><p>光必须从开放侧进入对方光源。保护墙吸收光。光出界、返回己方光源或困于闭环，该路径终止。</p><p>每手落定后，先检查对手的击败光路，再检查自己。双方同时成路时，落子者输。</p><h3>和棋与封锁</h3><p>双方同意和棋，或 163 个可落子格全部占满且双方均未获胜时判和；若轮到的一方已无合法落子，也自动判和。每手仍先检查胜负。光路被封锁时继续对局。</p></div></dialog>
   <dialog id="invite-dialog"><button class="dialog-close" id="invite-close" aria-label="关闭邀请面板">×</button><p class="eyebrow">带一位朋友来</p><h2>同一束光，两个人的棋局。</h2><p class="form-note">朋友打开链接或在首页输入房间号，双方准备后即可开始。</p><div class="invite-code"><span>房间号</span><strong id="invite-code"></strong><button id="code-copy" class="text-button">复制房间号</button></div><label class="field-label" for="invite-url">邀请链接</label><input id="invite-url" readonly /><button id="link-copy" class="primary full">复制邀请链接 ↗</button><button id="native-share" class="text-button full hidden">通过系统分享…</button><p class="form-note">断线后保留当前页面，或用原浏览器重新连接。不要把房主的页面交给朋友操作。</p></dialog>
   <div id="toast" role="status" aria-live="polite"></div>`;
 
-type RoomView = { type: 'room'; code: string; side: Side; players: Partial<Record<Side, { name: string; ready: boolean; online: boolean }>>;
+type RoomView = { type: 'room'; code: string; side: Side; players: Partial<Record<Side, { name: string; ready: boolean; online: boolean; registered?: boolean }>>;
   state: GameState; started: boolean; version: number; drawOffer: Side | null; rematch: Side[] };
 let mode: 'ai' | 'friend' | 'tutorial' = 'ai';
 let setupMode: 'ai' | 'friend' = 'ai';
@@ -49,6 +50,7 @@ let human: Side = 'red';
 let selected: { x: number; y: number } | null = null;
 let orientation: Orientation = '/';
 let difficulty: Difficulty = 'standard';
+let accountUser: AccountUser | null = null;
 let nickname = localStorage.getItem('lightpath-name') || '旅光者';
 let thinking = false;
 let worker: Worker | null = null;
@@ -93,6 +95,24 @@ function difficultyNote() {
   };
   $('#difficulty-note').textContent = descriptions[parseDifficulty($<HTMLSelectElement>('#difficulty').value)];
 }
+function syncAccount(user: AccountUser | null) {
+  const changedIdentity = (accountUser?.id ?? null) !== (user?.id ?? null);
+  accountUser = user;
+  if (changedIdentity && mode === 'friend') {
+    closeConnection(); room = null; sessionStorage.removeItem('lightpath-room');
+    playVisible = false; $('#play').classList.add('hidden'); $('#home').classList.remove('hidden');
+    history.replaceState(null, '', sitePath);
+    toast(user ? '已登录，请重新进入好友房间' : '已退出账号，好友连接已断开');
+  }
+  if (user) nickname = user.username;
+  else if (changedIdentity) nickname = localStorage.getItem('lightpath-guest-name') || '旅光者';
+  if (user || changedIdentity) localStorage.setItem('lightpath-name', nickname);
+  $<HTMLInputElement>('#nickname').value = nickname;
+  $<HTMLInputElement>('#nickname').readOnly = !!user;
+  $('#account-note').textContent = user ? '已登录：对局使用你的唯一账号名。' : '游客可以直接开始对局，也可以登录以使用唯一账号名。';
+  update();
+}
+const accounts = createAccounts($<HTMLButtonElement>('#account-open'), syncAccount);
 function toast(message: string) {
   $('#toast').textContent = message;
   $('#toast').classList.add('visible');
@@ -159,6 +179,7 @@ function connect(action: Record<string, unknown>) {
     if (message.type === 'pong') return;
     clearPending();
     if (message.type === 'error') {
+      if (message.message.includes('登录已失效')) { closeConnection(); void accounts.refresh(); }
       toast(message.message);
       if (!room || room.code !== action.code) closeConnection();
       $('#start-game').removeAttribute('disabled'); $('#start-game').textContent = '进入房间 ↗'; update(); return;
@@ -232,7 +253,7 @@ function update() {
   for (const side of ['red', 'blue'] as Side[]) {
     const player = room?.players[side];
     $(`#${side}-name`).textContent = tutorial ? (side === 'red' ? '你 · 红方' : '示例蓝方') : mode === 'ai' ? (human === side ? nickname : '电脑') : player?.name || '等待好友';
-    $(`#${side}-detail`).textContent = mode !== 'friend' ? `${sideName(side)} · ${side === 'red' ? '先手' : '后手'}` : !player ? `${sideName(side)} · 等待加入` : `${sideName(side)} · ${player.online ? (waiting ? (player.ready ? '已准备' : '未准备') : '在线') : '已断线'}`;
+    $(`#${side}-detail`).textContent = mode !== 'friend' ? `${sideName(side)} · ${side === 'red' ? '先手' : '后手'}${accountUser && side === human ? ' · 已注册' : ''}` : !player ? `${sideName(side)} · 等待加入` : `${sideName(side)} · ${player.online ? (waiting ? (player.ready ? '已准备' : '未准备') : '在线') : '已断线'}${player.registered ? ' · 已注册' : ' · 游客'}`;
     $(`#${side}-active`).classList.toggle('active', !ended && !waiting && state.turn === side);
   }
   let kicker = '轮到你了'; let title = '让光走向何处？'; let copy = '选择空格，放置一面镜子。';
@@ -307,6 +328,7 @@ function openSetup(next: 'ai' | 'friend', code = '') {
   $('#setup-title').textContent = next === 'ai' ? '开始一场光路对决' : '邀请朋友，一起落镜';
   $('#setup-kicker').textContent = next === 'ai' ? '独自推演' : '在线相逢';
   $<HTMLInputElement>('#nickname').value = nickname;
+  $<HTMLInputElement>('#nickname').readOnly = !!accountUser;
   $<HTMLInputElement>('#join-code').value = code;
   $('#start-game').textContent = next === 'ai' ? '开始对局 ↗' : '进入房间 ↗';
   $('#start-game').removeAttribute('disabled');
@@ -323,7 +345,9 @@ $('#setup-form').addEventListener('submit', event => {
   $('#start-game').click();
 });
 $('#start-game').onclick = async () => {
-  nickname = $<HTMLInputElement>('#nickname').value.trim() || '旅光者';
+  await accounts.ready;
+  nickname = accountUser?.username || $<HTMLInputElement>('#nickname').value.trim() || '旅光者';
+  if (!accountUser) localStorage.setItem('lightpath-guest-name', nickname);
   localStorage.setItem('lightpath-name', nickname);
   if (setupMode === 'ai') {
     closeConnection(); stopAI(); mode = 'ai'; room = null; state = emptyGame(); selected = null;
@@ -460,6 +484,8 @@ document.addEventListener('keydown', event => {
   if (event.key === 'Enter' && !$<HTMLButtonElement>('#confirm-move').disabled) $('#confirm-move').click();
 });
 const invite = new URLSearchParams(location.search).get('room');
+async function initialize() {
+await accounts.ready;
 if (invite) {
   if (sessionStorage.getItem('lightpath-room') === invite.toUpperCase()) connect({ type: 'join', code: invite, name: nickname, token: token() });
   else openSetup('friend', invite);
@@ -485,4 +511,8 @@ if (invite) {
   }
 }
 if (!invite && new URLSearchParams(location.search).get('mode') === 'friend') openSetup('friend');
+if (new URLSearchParams(location.search).get('account') === '1') accounts.open();
+update();
+}
+void initialize();
 update();
