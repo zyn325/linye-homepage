@@ -112,6 +112,7 @@ wss.on('connection', socket => {
     try {
       const message = JSON.parse(raw.toString());
       if (!message || typeof message.type !== 'string') throw new Error('请求格式无效');
+      if (message.type === 'ping') { send(socket, { type: 'pong' }); return; }
       if (message.type === 'create' || message.type === 'join') {
         const name = typeof message.name === 'string' ? message.name.trim().slice(0, 16) : '';
         const token = message.token;

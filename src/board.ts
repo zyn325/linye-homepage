@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { SOURCES, isForbidden, legalCell, legalMove, type GameState, type Orientation, type Side } from './game/rules';
+import { SOURCES, isForbidden, legalCell, legalMove, type GameState, type Orientation, type RayStep, type Side } from './game/rules';
 
 const GRID = 40;
 const PAD = 30;
@@ -12,11 +12,16 @@ export interface BoardView {
   side: Side;
   interactive: boolean;
   showRays: boolean;
+  rayPath?: RayStep[];
+  rayLimit?: number;
+  raySide?: Side;
+  highlight?: { x: number; y: number };
 }
 export function createBoard(parent: HTMLElement, onSelect: (x: number, y: number) => void) {
   let view: BoardView = { state: { moves: [], turn: 'red', outcome: null }, selected: null, orientation: '/', side: 'red', interactive: false, showRays: true };
   let scene: BoardScene;
   let hover: { x: number; y: number } | null = null;
+  let lastMoveKey = '';
   class BoardScene extends Phaser.Scene {
     graphics!: Phaser.GameObjects.Graphics;
     create() {
@@ -82,10 +87,20 @@ export function createBoard(parent: HTMLElement, onSelect: (x: number, y: number
         g.fillRect(p.x - 19, p.y - 19, 38, 38);
         g.fillStyle(COLORS[last.side], 0.85);
         g.fillCircle(p.x + 14, p.y + 14, 2);
+        g.lineStyle(1.5, COLORS[last.side], 0.85);
+        g.strokeRoundedRect(p.x - 17, p.y - 17, 34, 34, 3);
       }
-      const path = view.state.outcome?.path;
+      if (view.highlight) {
+        const p = this.center(view.highlight.x, view.highlight.y);
+        g.fillStyle(0xe8c995, 0.16);
+        g.fillRect(p.x - 19, p.y - 19, 38, 38);
+        g.lineStyle(2, 0xe8c995);
+        g.strokeRect(p.x - 18, p.y - 18, 36, 36);
+      }
+      const fullPath = view.rayPath ?? view.state.outcome?.path;
+      const path = fullPath?.slice(0, view.rayLimit ?? fullPath.length);
       if (view.showRays && path?.length) {
-        const color = COLORS[view.state.outcome!.winner as Side];
+        const color = COLORS[view.raySide ?? view.state.outcome!.winner as Side];
         for (const [width, alpha] of [[10, 0.06], [5, 0.12], [2, 0.95]]) {
           g.lineStyle(width, color, alpha);
           g.beginPath();
@@ -140,9 +155,22 @@ export function createBoard(parent: HTMLElement, onSelect: (x: number, y: number
         this.mirror(ghost.x, ghost.y, view.orientation, color, view.selected ? 0.85 : 0.35);
       }
     }
+    flash() {
+      const move = view.state.moves.at(-1);
+      if (!move || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+      const p = this.center(move.x, move.y);
+      const ring = this.add.rectangle(p.x, p.y, 34, 34).setStrokeStyle(2, COLORS[move.side]);
+      this.tweens.add({ targets: ring, scaleX: 1.65, scaleY: 1.65, alpha: 0, duration: 420, onComplete: () => ring.destroy() });
+    }
   }
   const game = new Phaser.Game({ type: Phaser.CANVAS, parent, width: DIM, height: DIM, transparent: true,
     scene: BoardScene, scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
     render: { antialias: true }, banner: false, audio: { noAudio: true } });
-  return { update(next: BoardView) { view = next; scene?.paint(); }, destroy() { game.destroy(true); } };
+  return { update(next: BoardView) {
+    view = next;
+    scene?.paint();
+    const last = view.state.moves.at(-1);
+    const nextKey = last ? `${view.state.moves.length}:${last.x},${last.y}:${last.orientation}:${last.side}` : '';
+    if (nextKey !== lastMoveKey) { lastMoveKey = nextKey; scene?.flash(); }
+  }, destroy() { game.destroy(true); } };
 }

@@ -113,6 +113,7 @@ export class ChessRoom extends DurableObject<Env> {
     try {
       if (typeof raw !== 'string') throw new Error('请求格式无效');
       const message = parseMessage(raw);
+      if (message.type === 'ping') { send(socket, { type: 'pong' }); return; }
       // Serialize the entire read/validate/write operation, including across
       // storage awaits, so simultaneous moves cannot overwrite each other.
       await this.ctx.blockConcurrencyWhile(async () => {
